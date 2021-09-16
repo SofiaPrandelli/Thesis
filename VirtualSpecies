@@ -1,0 +1,81 @@
+library(raster)
+library(virtualspecies)
+#---- 1. Download bioclimatic rasters -----
+#download bioclimatic raster
+Worldclim<-raster::getData('worldclim', var='bio', res=10) #Valid resolutions are 0.5, 2.5, 5, and 10 (minutes of a degree). In the case of res=0.5, you must also provide a lon and lat argument for a tile
+envData<-crop(Worldclim, extent(-12, 25, 36, 60))
+envData
+b <- as(extent(envData), "SpatialPolygons")
+
+#---- 2. Generate virtual species, create pseudoabsences using two different methodology, SDMs exercise and models statistics -----
+nVirtspecies=10#50
+myCRS<-"+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0"
+prev=0.5 #prevalence
+
+#run the whole framework
+myVirtualSP_list=list()
+
+for(myVs in 1:nVirtspecies){
+  #myVs=1
+  message(paste0("processing Virtual species  #",myVs ))
+  
+  #create virtual species
+  myRandNum=sample(1:19,size=5, replace = FALSE)
+  #widespread species, at the moment 
+  random.sp <- virtualspecies::generateRandomSp(envData[[myRandNum]], 
+                                                convert.to.PA = FALSE, 
+                                                species.type = "additive",
+                                                realistic.sp = TRUE, 
+                                                plot = FALSE)
+  plotResponse(random.sp)
+  plot(random.sp$suitab.raster)
+
+  #reclassify suitability raster using a probability conversion rule
+  new.pres<-convertToPA(x=random.sp, 
+                        # beta=0.55,
+                        beta="random",
+                        alpha = -0.05, plot = FALSE, 
+                        species.prevalence = prev) #DA DISCUTERE; studiati bene sta parte che è importante
+  
+  # new.pres
+  
+  myVirtualSP_list[[myVs]]=new.pres$pa.raster
+  
+}
+
+
+myVirtualSP_list
+
+plot(myVirtualSP_list[[1]])
+
+#convert list to stack
+mystack=raster::stack(myVirtualSP_list)
+mystack
+plot(mystack)
+
+#create raster of species abundances from the raster stack of species presence/absence
+r <- sum(mystack)
+plot(r)
+
+##----3. Phylogenetic tree: ENRICO ----
+#Ottieni matrice di distanze filogenetiche per le dieci specie
+library(ape)
+library(phytools)
+set.seed(4567) #for replicability
+phy=rtree(n=nVirtspecies) #genera albero casuale con n=numero Vs. 
+#NB: Se ci serve un albero con delle caratteristiche specifice lo aggiorniamo
+ultr.phy=force.ultrametric(phy) #forza l'albero ad esere ultrametrico
+par(mfrow=c(1,2))
+plot(phy);plot(ultr.phy)
+par(mfrow=c(1,1))
+#sostituisco tips con i nomi delle mie spp
+Mytips=c(paste0('myVs',seq(1:10)))
+
+ultr.phy$tip.label <- Mytips
+
+plot(ultr.phy)
+
+diss=cophenetic.phylo(ultr.phy) #computa distanza filogenetica tra le 10 spp
+
+##----4. RAOQ: MATTEO ----
+#combine specier presence/absence rasterstack with phylogenetic distances
