@@ -77,4 +77,4 @@ plot(ultr.phy)
 diss=cophenetic.phylo(ultr.phy) #computa distanza filogenetica tra le 10 spp
 
 ##----4. RAOQ: MATTEO ----
-#combine specier presence/absence rasterstack with phylogenetic distances
+#combine species presence/absence rasterstack with phylogenetic distances
