@@ -25,11 +25,8 @@ for(myVs in 1:nVirtspecies){
   #create virtual species
   myRandNum=sample(1:19,size=5, replace = FALSE)
   # widespread species, at the moment 
-  random.sp <- virtualspecies::generateRandomSp(envData[[myRandNum]], 
-                                                convert.to.PA = FALSE, 
-                                                species.type = "additive",
-                                                realistic.sp = TRUE, 
-                                                plot = FALSE)
+  random.sp <- virtualspecies::generateRandomSp(envData[[myRandNum]], convert.to.PA = FALSE, species.type = "additive", realistic.sp = TRUE, plot = FALSE)
+  
   plotResponse(random.sp)
   plot(random.sp$suitab.raster)
 
@@ -38,7 +35,7 @@ for(myVs in 1:nVirtspecies){
                         # beta=0.55,
                         # Prevalence DA DISCUTERE: studiati bene sta parte che è importante
   
-  # new.pres
+  new.pres
   
   myVirtualSP_list[[myVs]]=new.pres$pa.raster
   
@@ -63,8 +60,9 @@ plot(r)
 library(ape)
 library(phytools)
 set.seed(4567) #for replicability
-phy=rtree(n=nVirtspecies) #genera albero casuale con n=numero Vs. 
-#NB: Se ci serve un albero con delle caratteristiche specifice lo aggiorniamo
+phy=rtree(n=nVirtspecies) # genera albero casuale con n=numero Vs. 
+
+# NB: Se ci serve un albero con delle caratteristiche specifice lo aggiorniamo
 ultr.phy=force.ultrametric(phy) #forza l'albero ad esere ultrametrico
 par(mfrow=c(1,2))
 plot(phy);plot(ultr.phy)
