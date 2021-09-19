@@ -63,7 +63,7 @@ set.seed(4567) #for replicability
 phy=rtree(n=nVirtspecies) # genera albero casuale con n=numero Vs. 
 
 # NB: Se ci serve un albero con delle caratteristiche specifice lo aggiorniamo
-ultr.phy=force.ultrametric(phy) #forza l'albero ad esere ultrametrico
+ultr.phy=force.ultrametric(phy) #forza l'albero ad essere ultrametrico
 par(mfrow=c(1,2))
 plot(phy);plot(ultr.phy)
 par(mfrow=c(1,1))
