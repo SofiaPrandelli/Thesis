@@ -4,7 +4,6 @@ library(raster)
 library(virtualspecies)
 
 # 1. Download bioclimatic rasters
-# download bioclimatic raster
 Worldclim<-raster::getData('worldclim', var='bio', res=10) #Valid resolutions are 0.5, 2.5, 5, and 10 (minutes of a degree). In the case of res=0.5, you must also provide a lon and lat argument for a tile
 envData<-crop(Worldclim, extent(-12, 25, 36, 60))
 envData
@@ -34,7 +33,6 @@ for(myVs in 1:nVirtspecies){
   new.pres<-convertToPA(x=random.sp, beta="random", alpha = -0.05, plot = FALSE, species.prevalence = prev)
                         # beta=0.55,
                         # Prevalence DA DISCUTERE: studiati bene sta parte che è importante
-  
   new.pres
   
   myVirtualSP_list[[myVs]]=new.pres$pa.raster
