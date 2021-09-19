@@ -18,7 +18,7 @@ prev=0.5 #prevalence
 myVirtualSP_list=list()
 
 for(myVs in 1:nVirtspecies){
-  # myVs=1
+  # myVs=1 ; myVs=iteratore
   message(paste0("processing Virtual species  #",myVs ))
   
   #create virtual species
@@ -55,6 +55,8 @@ plot(r)
 
 ##----3. Phylogenetic tree: ENRICO ----
 # Ottieni matrice di distanze filogenetiche per le dieci specie
+install.packages("ape")
+install.packages("phytools")
 library(ape)
 library(phytools)
 set.seed(4567) #for replicability
@@ -73,6 +75,7 @@ ultr.phy$tip.label <- Mytips
 plot(ultr.phy)
 
 diss=cophenetic.phylo(ultr.phy) #computa distanza filogenetica tra le 10 spp
+diss
 
 ##----4. RAOQ: MATTEO ----
 #combine species presence/absence rasterstack with phylogenetic distances
