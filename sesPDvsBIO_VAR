@@ -1,0 +1,517 @@
+########## sPlotOpen – An environmentally-balanced, open-access, global dataset of vegetation plots ######################
+##########################################################################################################################
+
+#Caricamento dati
+load("/Users/sofiaprandelli/tesi/sPlotOpen.RData")
+
+#check species --> grep o stringsplit o tidyverse: 
+#devo essere sicura che le osservazioni siano definite tutte a livello di specie --> tolgo quelle che arrivano a livello di genere
+DT2.oa$Species <- gsub(DT2.oa$Species,pattern = ' ',replacement = '_')
+species_level <- DT2.oa[grepl("_", DT2.oa$Species),]
+NOspecies_level <- DT2.oa[!grepl("_", DT2.oa$Species),] #tutte le osservazioni che non possono essere considerate
+View(table(NOspecies_level$Species))
+
+#d$d.Species <- gsub(d$d.Species,pattern = ' ',replacement = '_')]
+
+#Unione delle 2 tabelle necessarie per le analisi e selezione delle variabili
+d <- merge(species_level, header.oa, by='PlotObservationID')
+d <- data.frame(d$PlotObservationID, d$Species, d$Original_abundance, d$Abundance_scale, d$Continent, d$Country, d$Latitude, d$Longitude, d$Relative_cover)
+#abbondanze relative (Relative_Cover) per plot così da poter calcolare direttamente Rao (da discutere)
+
+#Filtriamo per il continente Europa e togliamo solo le specie con le abbondanze x_SC=stem count, number of stems in plot
+d <- d[d$d.Continent=='Europe',]
+d <- d[d$d.Abundance_scale != 'x_SC',]
+
+names(d)
+unique(d$d.Original_abundance)
+
+
+############# P-A Matrix ###################
+
+setwd("/Users/sofiaprandelli/tesi")
+require(bigreadr)
+require(tidyverse)
+require(CoordinateCleaner)
+require(gridExtra)
+require(countrycode)
+library(data.table)
+library(sf)
+library(rnaturalearth)
+library(raster)
+library(RStoolbox)
+library(rasterVis)
+library(viridis)
+library(RColorBrewer)
+library(phyloregion)
+options(max.print=100000000)
+
+#10deg
+bm <- borders("world", colour="gray30", fill="gray30") #world basemap
+# ggplot()+ coord_fixed()+ bm +
+#   geom_point(data=plant,aes(x = decimalLongitude, y = decimalLatitude),
+#              colour = "red", size = 0.5)+ theme_bw()
+
+#1degree
+world <- ne_countries(scale = "medium", returnclass = "sf")
+r<-raster::extent(c(xmin=-30, xmax=54, ymin=25, ymax=74)) #extent tagliato sull'Europa
+p <- as(r, "SpatialPolygons")
+m <- sp::SpatialPolygonsDataFrame(p, data.frame(sp = "x"))
+m1 <- fishnet(mask = m, res = 1) #maglia 1 grado:100 km
+crs(m1) <- crs(world) #set the Coordinate reference system
+m1$id=1:nrow(m1)
+m1=m1[,-1] #tolgo l'oggetto "grids" da m1
+
+coordinates(d)= ~d.Longitude+d.Latitude #trasforma oggetto in spatial dataframe df 
+crs(d)=crs(m1)      #set the Coordinate reference system     #coordinate in WGS84
+ov1 <- over(d[,2], m1) #intersect griglia-occorrenze, double-check che la colonna selezionata sia la specie --> la specie va ad intersecare la griglia
+#names(d)--> colonna1=species, campo che andrà ad intersecare la griglia
+y1 <- cbind(as.data.frame(d[,c(1, 2, 3, 4, 5, 6)]), ov1) #add species names, genus, family, countryCode(double-check num colonna nel tuo db) 
+                                                        #add d.PlantObservationID, d.Species, d.Original_Abundance, d.Abundance_Scale, d.Continent, d.Country ??
+
+y1 <- y1[complete.cases(y1), ] #adding grids value
+spp1 <- data.frame(as.matrix(long2sparse(y1, grids = "id", species = "d.Species")))[,-1] #trasforma matrice da long a wide #spp1 matrice di abbondanza delle specie
+spp1pa <- vegan::decostand(spp1,method="pa") #trasformo in matrice Presence-Absence
+
+#####################################################
+
+nomiTab=c("Taxon","Genus","Hybrid.marker","Species","Abbrev", "Infraspecific.rank",
+          "Infraspecific","Authority", "ID", "Plant.Name.Index", "TPL.version",
+          "Taxonomic.status","Family","New.Genus","New.Hybrid.marker","New.Species",
+          "New.Infraspecific.rank", "New.Infraspecific",  "New.Authority","New.ID",
+          "New.Taxonomic.status", "Typo", "WFormat", "Higher.level","Date")
+#con nomiTab dò un vettore in cui ci sono i nomi della tabella che andrò a creare
+
+namesSpPa <- gsub(colnames(spp1pa),pattern = '_',replacement = ' ')
+nrowSpPa <- length(namesSpPa) #nrowTraits dà la lunghezza del database che deve creare che deve essere lungo quanto il n°specie che ho
+standNamesSpPa <- as.data.frame(matrix(NA, nrow = nrowSpPa, ncol=25,
+                                               dimnames=list(namesSpPa, nomiTab))) #creazione di un Database vuoto con i campi che stanno su nomiTab(25 col) e tante righe quante sono le specie
+
+
+# outfile="dataPrep/Raw/standNamesPlantsPhyl.txt"  ## outputfile, written cumulative !NB!
+# 
+# if (file.exists(outfile)) {
+#   start.no=max(fread(outfile)$no)+1 
+# } else {start.no=1}
+batchSize=700
+#campiona 700 specie per volta (per dividere l'analisi in più pacchetti), li standardizza e li butta nella matrice standNamesSpPa
+
+###################### standardizing plant names using TPL #######################
+install.packages("Taxonstand") #requires Taxonstand (for the TPL function)
+library(Taxonstand) #taxonomic standardization of plant species names
+
+
+for(i in 1:(ceiling(nrowSpPa/batchSize))){
+  cat(paste0("\nBatch ", i," out of ", (ceiling(nrowSpPa/batchSize)), "\n"))
+  rowsSelect <- ((i-1) * batchSize + 1):min((i*batchSize), nrowSpPa)
+  taxoAux <- as.data.frame(TPL(namesSpPa[rowsSelect],infra =TRUE,corr=TRUE,
+                               drop.lower.level=TRUE,repeats = 10))
+  standNamesSpPa[rowsSelect,] <- taxoAux #riempimento della matrice
+  # if (file.exists(outfile)) {
+  #   write.table(standNamesPlantsPhyl,append = T,
+  #               col.names = F,file=outfile)
+  # } else {write.table(standNamesPlantsPhyl,append = F,col.names = T,file=outfile)}
+}
+#Grindelia pulchella as more than one valid synonym; the first entry was selected
+#Mikania hirsutissima s more than one valid synonym; illegitimate/invalid names were avoided
+
+saveRDS(standNamesSpPa,'/Users/sofiaprandelli/tesi/standnamesSpPa.rds')
+
+taxoPlants<-data.frame("Species"=paste(standNamesSpPa$New.Genus,standNamesSpPa$New.Species),
+                       "Genus"=standNamesSpPa$Genus,"Family"=standNamesSpPa$Family)
+                       #Creo un dataframe con n°specie per le righe e 3 colonne(specie,genere,famiglia)
+                       #taxoPlants mi serve per creare la mia Phylogeny con V.Phylomaker: creo la mia tassonomia di riferimento
+
+taxoPlants$Species <- gsub(taxoPlants$Species,pattern = ' ',replacement = '_')
+taxoPlants$Species <- gsub(taxoPlants$Species,pattern = '-',replacement = '_')
+
+###############Creation of the PHYLOGENETIC TREE#################
+
+devtools::install_github("jinyizju/V.PhyloMaker", force=TRUE)
+library(V.PhyloMaker)
+
+phylogenyPlants <- phylo.maker(taxoPlants, scenarios=c("S1","S3"))  #taxoPlants è la tassonomia di riferimento  
+                                                                    #ho 2 alberi: uno per lo scenario S1 e uno per lo scenario S2: parte da una phylogeny di riferimento (che non è inclusiva di tutte le specie del mondo) e poi cambia il modo con cui attacca le specie a quella phylogeny 
+myTree <- phylogenyPlants$scenario.3 #scenario 3 
+
+#L'output di Phylogeny plants (un phylogenetic tree) lo attacchiamo alla griglia calcolando il PD
+#L'albero dovrebbe andar bene perché lo costruiamo dalle specie che abbiamo, ma facciamo un check delle specie dato che alcune specie potrebbero non venire attaccate all'albero -->
+#                                --> quindi bisogna filtrare e verificare che ci sia lo stesso numero di specie nella matrice e nell'albero 
+
+############## PD CALCULATION #################
+
+#package picante (function pd or sespd)
+install.packages("picante")
+library(picante)
+
+dim(spp1pa)[2]==length(myTree$tip.label) #check che spp nella matrice di comunità siano le stesse che nell'albero
+#prunedTree <- prune.sample(myTree, phylogenyPlants) #pruning the tree
+#myPrunedTree <- myTree$scenario.3
+#spp1pa <- spp1pa[, prunedTree$tip.label] #sorting columns of the sample to be in the same order as the tip labels of the phylogeny
+PDobs <- pd(spp1pa, myTree, include.root=TRUE)
+
+###################### PHYLOGENETIC DIVERSITY MAP #######################
+#adding id values to PDobs
+pd <- data.frame(rownames(PDobs),PDobs$PD)
+colnames(pd) <- c("id", "PD")
+
+#pa <- add_column(spp1pa, rownames(spp1pa), .before='Acer_campestre')
+#colnames(pa)[1] <- "id"
+
+install.packages("ggplot2")
+library(ggplot2)
+install.packages("sf")
+library(sf)
+
+#merge pd e oggetto spaziale
+mydf1 <- sp::merge(m1, pd, by='id', all=F)
+mydf1 <- mydf1@data
+#opzioni di estetica
+myTheme<-theme(panel.background= element_rect(color="black", fill="gray90"),
+               panel.grid.major = element_blank(),
+               plot.title = element_text(size=25,face = 'bold'),
+               legend.title=element_text(size=25),
+               legend.text = element_text(size=25),
+               axis.title.x = element_text(size = 25),
+               axis.text.x = element_text(size = 25),
+               axis.title.y = element_text(size = 25),
+               axis.text.y = element_text(size = 25))
+
+#plot
+#install.packages("viridis")
+#library(viridis)
+require(viridis)
+require(tidyverse)
+
+sf1 <- mydf1 %>% 
+  st_as_sf () %>% 
+  ggplot()+
+  geom_sf(data=world[world$continent=='Europe',])+ #oggetto world
+  geom_sf(aes(fill=PD),color=NA) +
+  scale_fill_viridis(option='magma',direction = 1,alpha = 0.7)+ #carica pkg viridis+
+  
+  #coord_sf(xlim=c(xmin=10, xmax=54, ymin=25, ymax=74))+ #ritaglio sull'europa
+  coord_sf(xlim = c(-10, 51), ylim = c(25, 75), expand = FALSE)+
+  labs(title = "Vascular plants 1°")+myTheme->pd1;pd1
+
+#esporta plot come tiff
+tiff('PlantsPD_1deg.tiff',res=300,units='cm',width = 30,height = 25)
+pd1
+dev.off()
+
+
+###################### SPECIES RICHNESS MAP ######################
+
+sr <- data.frame(rownames(PDobs),PDobs$SR)
+colnames(sr) <- c("id", "SR")
+
+#merge sr e oggetto spaziale
+mydf2 <- sp::merge(m1, sr, by='id', all=F)
+mydf2 <- mydf2@data
+#opzioni di estetica
+myTheme2 <-theme(panel.background= element_rect(color="black", fill="gray90"),
+                 panel.grid.major = element_blank(),
+                 plot.title = element_text(size=25,face = 'bold'),
+                 legend.title=element_text(size=25),
+                 legend.text = element_text(size=25),
+                 axis.title.x = element_text(size = 25),
+                 axis.text.x = element_text(size = 25),
+                 axis.title.y = element_text(size = 25),
+                 axis.text.y = element_text(size = 25))
+
+#plot
+#install.packages("viridis")
+#library(viridis)
+#require(viridis)
+#require(tidyverse)
+
+sf2 <- mydf2 %>% 
+  st_as_sf () %>% 
+  ggplot()+
+  geom_sf(data=world[world$continent=='Europe',])+ #oggetto world
+  geom_sf(aes(fill=SR),color=NA) +
+  scale_fill_viridis(option='magma',direction = 1,alpha = 0.7)+ #carica pkg viridis+
+  
+  #coord_sf(xlim=c(xmin=10, xmax=54, ymin=25, ymax=74))+ #ritaglio sull'europa
+  coord_sf(xlim = c(-10, 51), ylim = c(25, 75), expand = FALSE)+
+  labs(title = "Vascular plants 1°")+myTheme->sr1;sr1
+
+#esporta plot come tiff
+tiff('PlantsSR_1deg.tiff',res=300,units='cm',width = 30,height = 25)
+sr1
+dev.off()
+
+
+############################ sesPD ###############################
+
+#randomizing my community or spps in the tree to obtain a Standardized effect size (SES)
+#ottenendo il valore "effettivo" di pd a prescindere dalle spp che ci sono in quella cella
+
+require(picante)
+sesPD = picante::ses.pd(samp=spp1pa, tree=myTree, null.model ="independentswap",runs = 999, include.root=TRUE)
+
+#Ma per alleggerirlo potremmo provare con:
+#ses.pd <- ses.pd(spp1pa, myTree, runs = 999, iterations = 1000, include.root=TRUE)   #senza richness
+
+#salvare sesPD come rds o come tabella, basta che possa essere importato in R come data.frame
+saveRDS(ses.pd,'/Users/sofiaprandelli/tesi/sesPD.rds')
+write.csv(sesPD, '/Users/sofiaprandelli/tesi/sesPD.csv')
+sespd <- sesPD = sesPD@data
+
+
+################### Worldclim Bioclimatic variables ##################
+
+library(raster)
+Worldclim <- raster::getData('worldclim', var='bio', res=5) #Valid resolutions are 0.5, 2.5, 5, and 10 (minutes of a degree). In the case of res=0.5, you must also provide a lon and lat argument for a tile
+#all_var <- rasterToPoints(Worldclim)
+#bio_1 <- rasterToPoints(Worldclim$bio1)
+m1
+
+############ all the climatic variables + sesPD, PD, SR ############ data.frame mydf4
+plot(Worldclim)
+plot(m1, add=TRUE)
+Worldclim=crop(Worldclim, m1)
+plot(Worldclim)
+
+tmp1 = raster::extract(Worldclim, m1, fun=mean, df=TRUE) #estrai la media di tutti i valori delle 19 variabili per le rispettive celle della griglia m1
+#tmp$bio1 = tmp$bio1 / 10 #i valori di bio1 su Worldclim sono moltiplicati per 10
+colnames(tmp1)[1] <- "id"
+#merge tmp e oggetto spaziale m1 (tmp e m1 hanno lo stesso numero di celle e lo stesso ordine)
+mydf4 <- sp::merge(m1, tmp1, by='id', all=F)
+mydf4=cbind(m1, tmp1)
+mydf4 <- mydf4@data
+# aggiungo a PDobs e a sesPD il campo 'id'
+require(tidyverse)
+PDobs <- add_column(PDobs, rownames(spp1pa), .before='PD')
+colnames(PDobs)[1] <- "id"
+sesPD <- add_column(sesPD, rownames(spp1pa), .before='ntaxa')
+colnames(sespd)[1] <- "id"
+
+mydf4=sp::merge(mydf4, PDobs, by='id')
+mydf4=sp::merge(mydf4, sespd, by='id')
+
+write.csv(mydf4, '/Users/sofiaprandelli/tesi/sesPD_PD_SR_BIOV.csv')
+
+#scatter plot per tutte le variabili bio
+# pivot_longer()
+# ggplot2::facet_wrap()
+# pivot table in excel
+require(ggplot2)
+
+
+############ BIO1 = Annual Mean Temperature ############# PD vs BIO1
+plot(Worldclim[[1]])
+plot(m1, add=TRUE)
+Worldclim=crop(Worldclim, m1)
+plot(Worldclim[[1]])
+
+tmp = raster::extract(Worldclim[[1]], m1, fun=mean, df=TRUE) #estrai la media delle variabili per le rispettive celle della griglia
+                                                             #solo la prima variabile (bio1)
+                                                             #FUN function to summarize values (e.g. mean, min or max)
+tmp$bio1 = tmp$bio1 / 10 #i valori di bio1 su Worldclim sono moltiplicati per 10
+colnames(tmp) <- c("id", "bio1")
+#merge tmp e oggetto spaziale m1
+mydf3 <- sp::merge(m1, tmp, by='id', all=F)
+mydf3=cbind(m1, tmp) 
+mydf3=sp::merge(mydf3, pd, by='id')
+mydf3=mydf3@data
+
+#scatter plot per vedere come variano PD e SR sulla base delle variabili bioclimatiche
+library(ggplot2)
+
+PDvsTEMP <- plot(x=mydf3$bio1, y=mydf3$PD,
+     xlab = "Annual Mean Temperature",
+     ylab = "PD",
+     main = "Phylogenetic Diversity vs Annual Mean Temperature")
+
+
+############ BIO1 = Annual Mean Temperature ############# sesPD vs BIO1
+#filtro su mydf4 
+#in mydf4: Standardized effect size of PD vs. null communities (= (pd.obs - pd.rand.mean) / pd.rand.sd)
+mydf4_bio1 <- data.frame(mydf4$id, mydf4$bio1, mydf4$PD, mydf4$SR, mydf4$pd.obs.z)
+
+mydf4_bio1$mydf4.bio1 = mydf4_bio1$mydf4.bio1 / 10 #i valori di bio1 su Worldclim sono moltiplicati per 10
+
+#plot per vedere come varia sesPD in fn di bio1
+library(ggplot2)
+
+sesPDvsTEMP <- plot(x=mydf4_bio1$mydf4.bio1, y=mydf4_bio1$mydf4.pd.obs.z,
+                 xlab = "Annual Mean Temperature",
+                 ylab = "sesPD",
+                 main ="Standardized effect size of sesPD vs Annual Mean Temperature")
+
+
+############ BIO12 = Annual precipitation amount ############# sesPD vs BIO12
+#filtro su mydf4 
+#in mydf4: Standardized effect size of PD vs. null communities (= (pd.obs - pd.rand.mean) / pd.rand.sd)
+mydf4_bio12 <- data.frame(mydf4$id, mydf4$bio12, mydf4$PD, mydf4$SR, mydf4$pd.obs.z)
+
+#plot per vedere come varia sesPD in fn di bio12
+library(ggplot2)
+sesPDvsPRECIP <- plot(x=mydf4_bio12$mydf4.bio12, y=mydf4_bio12$mydf4.pd.obs.z,
+                    xlab = "Annual precipitation amount",
+                    ylab = "sesPD",
+                    main ="Standardized effect size of PD vs Annual precipitation amount")
+
+############ BIO12 = Annual precipitation amount ############# PD vs BIO12
+PDvsPRECIP <- plot(x=mydf4_bio12$mydf4.bio12, y=mydf4_bio12$mydf4.PD,
+                      xlab = "Annual precipitation amount",
+                      ylab = "PD",
+                      main ="PD vs Annual precipitation amount")
+
+############ BIO4 = temperature seasonality ############# sesPD vs BIO4
+sesPDvsTSEASON <- plot(x=mydf4$bio4, y=mydf4$pd.obs.z,
+                   xlab = "T° seasonality",
+                   ylab = "sesPD",
+                   main ="Standardized effect size of PD vs Temperature seasonality")
+
+############ BIO7 = annual range of air temperature ############# sesPD vs BIO7
+##############################################################
+sesPDvsTAIR <- plot(x=mydf4$bio7, y=mydf4$pd.obs.z,
+                    xlab = "annual range of air T°",
+                    ylab = "sesPD",
+                    main ="Standardized effect size of PD vs Annual range of air temperature")
+
+#############################################################
+par(mfrow=c(2,2))
+#sesPDvsTEMP
+#sesPDvsPRECIP
+#sesPDvsTSEASON 
+#sesPDvsTAIR
+
+mydf4_full$bio19 = mydf4_full$bio19 / 10
+mydf4$bio3 = mydf4$bio3 / 10
+#da fare con tutte le vriabili 
+
+mydf4_full <- filter(mydf4, bio1 != "NA") #tolgo i valori nulli
+mydf4_full <- mydf4_full[,-2] #tolgo colonna 2
+mydf4_full <- mydf4_full [-31:-38] #tolgo da colonna 31 a 38
+colnames(mydf4_full)[c(28)] <- c("sesPD")
+
+################## ggplot2::facet_wrap() 
+###################################################### sesPD ####
+library(tidyverse)
+library(readxl)
+library(ggplot2)
+names(mydf4)
+
+mydf4_long=mydf4 %>%
+  select("id", "bio1","bio2",
+         "bio3", "bio4", "bio5", "bio6", "bio7",
+         "bio8", "bio9", "bio10", "bio11", "bio12",
+         "bio13", "bio14", "bio15", "bio16", "bio17", "bio18",
+         "bio19","pd.obs.z.y", "SR") %>%
+  rename(myID="id") %>%
+  pivot_longer(-c(myID, pd.obs.z.y, SR)) %>%
+  mutate(name=factor(name, levels = c("bio1","bio2",
+                                      "bio3", "bio4", "bio5", "bio6", "bio7",
+                                      "bio8", "bio9", "bio10", "bio11", "bio12",
+                                      "bio13", "bio14", "bio15", "bio16", "bio17", "bio18",
+                                      "bio19")))
+
+sf3 <- mydf4_long %>%
+  ggplot(aes(x=value, y=pd.obs.z.y))+
+  geom_line()+
+  labs(title = "Standardized effect size of Phylogenetic Diversity variations",
+     subtitle = "in Europe",
+     x="Bioclimatic variables", y="sesPD")+
+  facet_wrap(~name, scales = "free")+
+  theme_light() -> pd2;pd2
+
+tiff('/Users/sofiaprandelli/tesi/PLOTS/sesPD_BIOVAR',res=300,units='cm',width = 30,height = 25)
+pd2
+dev.off()
+
+######################################################## PD #####
+mydf4_long=mydf4 %>%
+  select("id", "bio1","bio2",
+         "bio3", "bio4", "bio5", "bio6", "bio7",
+         "bio8", "bio9", "bio10", "bio11", "bio12",
+         "bio13", "bio14", "bio15", "bio16", "bio17", "bio18",
+         "bio19","PD", "SR") %>%
+  rename(myID="id") %>%
+  pivot_longer(-c(myID, PD, SR)) %>%
+  mutate(name=factor(name, levels = c("bio1","bio2",
+                                      "bio3", "bio4", "bio5", "bio6", "bio7",
+                                      "bio8", "bio9", "bio10", "bio11", "bio12",
+                                      "bio13", "bio14", "bio15", "bio16", "bio17", "bio18",
+                                      "bio19")))
+sf3 <- mydf4_long %>%
+  ggplot(aes(x=value, y=PD))+
+  geom_line()+
+  labs(title = "Phylogenetic Diversity variations",
+       subtitle = "in Europe",
+       x="Bioclimatic variables", y="Phylogenetic Diversity")+
+  facet_wrap(~name, scales = "free")+
+  theme_light() -> pd2;pd2
+
+tiff('/Users/sofiaprandelli/tesi/PLOTS/PD_BIOVAR',res=300,units='cm',width = 30,height = 25)
+pd2
+dev.off()
+
+
+################# matrice di correlazione #################
+# bio1, bio4, bio12, bio15
+variables_correlation <- data.frame(mydf4_full$bio1, mydf4_full$bio4, mydf4_full$bio12, mydf4_full$bio15, mydf4_full$PD, mydf4_full$SR, mydf4_full$pd.obs.z) #riga 383 per ripristinare mydf4_full
+colnames(variables_correlation) <- c("bio1", "bio4", "bio12", "bio15", "PD", "SR", "sesPD")
+cor(variables_correlation)
+install.packages("corrplot")
+library(corrplot)
+corrplot(cor(variables_correlation), method = "circle")
+
+
+################# linear regression #################### ho diviso in 3 gruppi le variabili 
+plot(mydf4_full[,c(14:20, 28)])
+regression <- lm(sesPD~bio13+bio14+bio15+bio16+bio17+bio18+bio19, data=mydf4_full)
+summary(regression)
+plot(regression)
+hist(regression$residuals)
+
+------------------------------------------
+plot(variables_correlation[,c(1:4, 7)])
+linear_regression <- lm(sesPD ~ bio1+bio4+bio12+bio15, data=variables_correlation)
+summary(linear_regression)
+
+
+################## quadratic correlations ################
+squared_variables <- data.frame(variables_correlation$bio1^2, variables_correlation$bio4^2, variables_correlation$bio12^2, variables_correlation$bio15^2, variables_correlation$sesPD)
+colnames(squared_variables) <- c("Qbio1", "Qbio4", "Qbio12", "Qbio15", "sesPD")
+
+plot(squared_variables[,c(1:4, 5)])
+
+Q_regr <- lm(sesPD ~ Qbio1+Qbio4+Qbio12+Qbio15, data=squared_variables)
+summary(Q_regr)
+plot(Q_regr)
+
+---------------------------------
+modQ <- lm(sesPD ~ poly(bio1,2)+poly(bio4,2)+poly(bio12,2)+poly(bio15,2), data=variables_correlation)
+#poly(variabile,2) dice al modello che la variabile bio1 va espressa con una relazione quadratica 
+summary(modQ)
+plot(modQ)
+
+
+################## Random Forest model ################ Extent World
+#######################################################
+library(raster)
+Worldclim <- raster::getData('worldclim', var='bio', res=5)
+
+#Per il rf non serve che le elevi al quadrato ma puoi usare quelle originali (questo tipo di modello tiene in qualche modo conto delle relazioni non lineari)
+install.packages("ranger")
+library(ranger)
+myRF=ranger(sesPD~bio1+bio4+bio12+bio15, importance = 'permutation', data=variables_correlation)
+
+print(myRF)
+importance(myRF) #la variabile con maggiore importance ha più peso nell'influenzare la tua variabile risposta cioè sesPD
+plot(myRF$predictions, variables_correlation$sesPD)
+#Random Forest model is capable of obtaining an explained variance of about 13%
+
+#creating: Prediction using the RF model and Rasterstack containing only the variables used to make the model
+Worldclim <- raster::getData('worldclim', var='bio', res=5)
+new.stack = stack(Worldclim[[c("bio1", "bio4", "bio12", "bio15")]])
+
+myPredR = predict(new.stack, myRF, type = "response", predict.all=FALSE, na.rm = T, progress = "text", fun = function(model, ...) predict(model, ...)$predictions)
+
+myPredR
+hist(variables_correlation$sesPD, col="blue")
+hist(myPredR, add=TRUE)
+plot(myPredR)
+
