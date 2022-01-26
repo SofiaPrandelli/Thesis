@@ -240,11 +240,10 @@ ggplot(df, aes(x=reorder(variable,importance), y=importance,fill=importance))+
   theme_light()+theme(legend.position = 'none')
 
 ########################### VARIABLE IMPORTANCE BOX PLOT 2
-ggplot(myRF2$variable.importance, aes(x=reorder(variable,importance), y=importance,fill=importance))+ 
+ggplot(myRF3$variable.importance, aes(x=reorder(variable,importance), y=importance,fill=importance))+ 
   geom_bar(stat="identity", position="dodge")+ coord_flip()+
   ylab("Variable Importance")+
   xlab("")+
   ggtitle("Information Value Summary")+
   guides(fill=F)+
   scale_fill_gradient(low="red", high="blue")
-
