@@ -509,9 +509,25 @@ Worldclim <- raster::getData('worldclim', var='bio', res=5)
 new.stack = stack(Worldclim[[c("bio1", "bio4", "bio12", "bio15")]])
 
 myPredR = predict(new.stack, myRF, type = "response", predict.all=FALSE, na.rm = T, progress = "text", fun = function(model, ...) predict(model, ...)$predictions)
-
 myPredR
+
 hist(variables_correlation$sesPD, col="blue")
 hist(myPredR, add=TRUE)
-plot(myPredR)
 
+devtools::install_github("thomasp85/scico")
+install.packages("scico")
+library(scico)
+library(ggplot2)
+library(rasterVis)
+#scico_palette_show()
+
+gplot(myPredR, maxpixels=500000) +
+  geom_raster(aes(fill = value), interpolate = TRUE, color = "black") + 
+  labs(x="Longitude", y="Latitude", fill="")+
+  ggtitle("SesPD prediction based on 4 Bioclimatic Variables")+
+  theme_light()+
+  scale_fill_scico(palette = 'roma', limits=c(-0.5, 0.5)) +
+  theme(legend.position = "bottom")+
+  guides(fill = guide_colourbar(title.position="top", title.hjust = 0.5, barwidth = 20, barheight = 0.8),
+         size = guide_legend(title.position="top", title.hjust = 0.5))+
+  coord_equal()
