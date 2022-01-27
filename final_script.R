@@ -1,4 +1,32 @@
+############################ Biogeographical patterns of plant phylogenetic diversity at the European scale ############################
+########################################################################################################################################
 
+
+#Caricamento dati
+load("/Users/sofiaprandelli/tesi/sPlotOpen.RData")
+
+#check species --> grep o stringsplit o tidyverse: 
+#devo essere sicura che le osservazioni siano definite tutte a livello di specie --> tolgo quelle che arrivano a livello di genere
+DT2.oa$Species <- gsub(DT2.oa$Species,pattern = ' ',replacement = '_')
+species_level <- DT2.oa[grepl("_", DT2.oa$Species),]
+NOspecies_level <- DT2.oa[!grepl("_", DT2.oa$Species),] #tutte le osservazioni che non possono essere considerate
+View(table(NOspecies_level$Species))
+
+#d$d.Species <- gsub(d$d.Species,pattern = ' ',replacement = '_')
+
+#Unione delle 2 tabelle necessarie per le analisi e selezione delle variabili
+d <- merge(species_level, header.oa, by='PlotObservationID')
+d <- data.frame(d$PlotObservationID, d$Species, d$Original_abundance, d$Abundance_scale, d$Continent, d$Country, d$Latitude, d$Longitude, d$Relative_cover)
+#abbondanze relative (Relative_Cover) per plot così da poter calcolare direttamente Rao (da discutere)
+
+#Filtriamo per il continente Europa e teniamo solo le specie con le abbondanze x_IC (n° individui per plot) e pa
+d <- d[d$d.Continent=='Europe',]
+d <- d[d$d.Abundance_scale != 'x_SC',]
+
+names(d)
+unique(d$d.Original_abundance)
+
+# setting wd
 setwd("/Users/sofiaprandelli/tesi")
 require(bigreadr)
 require(tidyverse)
@@ -150,15 +178,6 @@ myRF3=ranger(sesPD~bio1+bio2+bio3+bio4+bio5+bio6+bio7+bio8+bio9+bio10+bio11+bio1
 print(myRF3)
 importance(myRF3)
 
-##########################################
-sesPD_prediction_3 <- plot(x=myRF3$predictions, y=mydf5_complete$sesPD,
-                           xlab = "Predictions",
-                           ylab = "sesPD", 
-                           xlim = c(-0.7,0.4),
-                           ylim = c(-0.7, 0.4),
-                           main = "Prediction of Standardized Effect Size of Phylgenetic Diversity 
-     based on Bioclimatic and Anthropogenic Variables")
-
 ########################################## Prediction with bisector and intercept
 data4plot=cbind.data.frame("pred"=myRF3$predictions, "obs"=mydf5_complete$sesPD)
 summary(lm(data4plot$obs~data4plot$pred))
@@ -264,19 +283,7 @@ gplot(myPredR3, maxpixels=500000) +
          size = guide_legend(title.position="top", title.hjust = 0.5))+
   coord_equal()
 
-############################ VARIABLE IMPORTANCE BOX PLOT 1 #########################
-df<-data.frame(as.matrix(myRF3$variable.importance)) 
-df$variable<-rownames(df)
-colnames(df)[1]<-'importance'
-ggplot(df, aes(x=reorder(variable,importance), y=importance,fill=importance))+ 
-  geom_bar(stat="identity", position="dodge")+ coord_flip()+
-  ylab("Variable Importance")+
-  xlab("")+
-  ggtitle("Information Value Summary")+
-  scale_fill_gradient(low="red", high="blue")+
-  theme_light()+theme(legend.position = 'none')
-
-########################### VARIABLE IMPORTANCE BOX PLOT 2
+############################ VARIABLE IMPORTANCE BOX PLOT #########################
 ggplot(df, aes(x=reorder(variable,importance), y=importance,fill=importance))+ 
   geom_bar(stat="identity", position="dodge")+ coord_flip()+
   ylab("Variable Importance")+
@@ -284,4 +291,3 @@ ggplot(df, aes(x=reorder(variable,importance), y=importance,fill=importance))+
   ggtitle("Information Value Summary")+
   guides(fill=F)+
   scale_fill_gradient(low="red", high="blue")
-
