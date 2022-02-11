@@ -17,7 +17,6 @@ View(table(NOspecies_level$Species))
 #Unione delle 2 tabelle necessarie per le analisi e selezione delle variabili
 d <- merge(species_level, header.oa, by='PlotObservationID')
 d <- data.frame(d$PlotObservationID, d$Species, d$Original_abundance, d$Abundance_scale, d$Continent, d$Country, d$Latitude, d$Longitude, d$Relative_cover)
-#abbondanze relative (Relative_Cover) per plot così da poter calcolare direttamente Rao (da discutere)
 
 #Filtriamo per il continente Europa e teniamo solo le specie con le abbondanze x_IC (n° individui per plot) e pa
 d <- d[d$d.Continent=='Europe',]
