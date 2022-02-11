@@ -170,6 +170,70 @@ write.csv(mydf5, '/Users/sofiaprandelli/tesi/mydf5+pop_dens.csv')
 mydf5_complete <- na.omit(mydf5)
 table(mydf5_complete$sesPD>="0.00") #TRUE 193, FALSE 1364
 
+
+###################### scatterplots - PD e sesPD in fn di variabili ##################
+library(ggplot2)
+
+############ world map based on 4 bioclim var ################
+############ BIO4 = temperature seasonality ############# sesPD vs BIO4 - higher variable importance value
+sespdtemp <- ggplot(mydf4, aes(x=bio4, y=pd.obs.z)) +
+       xlab("T° seasonality")+
+       ylab("sesPD")+
+#       ggtitle("SesPD vs Temperature seasonality")+
+  geom_point(size=1, color="darkblue")
+# PD
+pdtemp <- ggplot(mydf4, aes(x=bio4, y=PD))+
+  xlab("T° seasonality")+
+  ylab("PD")+
+#  ggtitle("PD vs Temperature seasonality")+
+  geom_point(size=1, color="darkblue")
+
+############ BIO15 = Precipitation Seasonality ############# sesPD vs BIO15 - lower variable importance value
+sespdprec <- ggplot(mydf4, aes(x=bio15, y=pd.obs.z)) +
+  xlab("Precipitation Seasonality")+
+  ylab("sesPD")+
+#  ggtitle("SesPD vs Precipitation Seasonality")+
+  geom_point(size=1, color="darkblue")
+# PD
+pdprec <- ggplot(mydf4, aes(x=bio15, y=PD))+
+  xlab("Precipitation seasonality")+
+  ylab("PD")+
+#  ggtitle("PD vs Precipitation seasonality")+
+  geom_point(size=1, color="darkblue")
+
+require(gridExtra)
+grid.arrange(pdtemp, sespdtemp, pdprec, sespdprec, ncol=2, nrow=2)
+
+############## Europe map based on 19 bioclim var + pop denisty ################
+############## BIO11 = Mean Temperature of Coldest Quarter ############# sesPD vs BIO11 - higher variable importance value
+sesPDvsCOLDTEMP <- ggplot(mydf5_complete, aes(x=bio11, y=sesPD)) +
+  xlab("Mean T° of Coldest Quarter")+
+  ylab("sesPD")+
+#  ggtitle("SesPD vs Mean Temperature of Coldest Quarter")+
+  geom_point(size=1, color="darkblue")
+# PD
+PDvsCOLDTEMP <- ggplot(mydf5_complete, aes(x=bio11, y=PD))+
+  xlab("Mean T° of Coldest Quarter")+
+  ylab("PD")+
+#  ggtitle("PD vs Mean Temperature of Coldest Quarter")+
+  geom_point(size=1, color="darkblue")
+
+############ Population density ############# sesPD vs pop_dens -  lower variable importance value
+sesPDvspopdens <- ggplot(mydf5_complete, aes(x=pop_dens, y=sesPD)) +
+  xlab("Population density")+
+  ylab("sesPD")+
+#  ggtitle("SesPD vs Population density")+
+  geom_point(size=1, color="darkblue")
+# PD
+PDvspopdens <- ggplot(mydf5_complete, aes(x=pop_dens, y=PD))+
+  xlab("Population density")+
+  ylab("PD")+
+#  ggtitle("PPD vs Population density")+
+  geom_point(size=1, color="darkblue")
+
+grid.arrange(PDvsCOLDTEMP, sesPDvsCOLDTEMP, PDvspopdens, sesPDvspopdens, ncol=2, nrow=2)
+
+
 ################# RANDOM FOREST MODEL ############## Extent Europe, resolution 2.5=about 4.5 km at the equator
 install.packages("ranger")
 library(ranger)
@@ -178,7 +242,7 @@ myRF3=ranger(sesPD~bio1+bio2+bio3+bio4+bio5+bio6+bio7+bio8+bio9+bio10+bio11+bio1
 print(myRF3)
 importance(myRF3)
 
-########################################## Prediction with bisector and intercept
+########################################## Prediction - bisector and intercept
 data4plot=cbind.data.frame("pred"=myRF3$predictions, "obs"=mydf5_complete$sesPD)
 summary(lm(data4plot$obs~data4plot$pred))
 predlm <- (lm(data4plot$obs~data4plot$pred))
@@ -203,7 +267,7 @@ ggplot(data=data4plot, aes(x=pred, y=obs) ) +
   theme_bw()
 sesPD_prediction_3 + geom_abline(slope = 1)
 
-################################## Prediction with hex bins geom
+################################## Prediction - hex bins geom
 ggplot(data=data4plot, aes(x=pred, y=obs) ) +
   geom_hex(bins = 70) +
   ylab("sesPD") +
@@ -233,7 +297,7 @@ library(ggplot2)
 library(rasterVis)
 library(viridis)
 
-#################### 1
+#################### 1 (prova)
 gplot(myPredR3, maxpixels=500000) +
   geom_raster(aes(fill = value), interpolate = TRUE, color = "black") + 
   labs(x="Longitude",y="Latitude", fill="")+
@@ -243,7 +307,7 @@ gplot(myPredR3, maxpixels=500000) +
          size = guide_legend(title.position="top", title.hjust = 0.5))+
   coord_equal()
 
-#################### 2
+#################### 2 (prova)
 gplot(myPredR3, maxpixels=500000) +
   geom_raster(aes(fill = value), interpolate = TRUE, color = "black") + 
   labs(x="Longitude", y="Latitude", fill="")+
@@ -254,7 +318,7 @@ gplot(myPredR3, maxpixels=500000) +
          size = guide_legend(title.position="top", title.hjust = 0.5))+
   coord_equal()
 
-#################### 3
+#################### 3 (prova)
 gplot(myPredR3, maxpixels=500000) +
   geom_raster(aes(fill = value), interpolate = TRUE, color = "black") + 
   labs(x="Longitude", y="Latitude", fill="")+
