@@ -233,6 +233,52 @@ PDvspopdens <- ggplot(mydf5_complete, aes(x=pop_dens, y=PD))+
 grid.arrange(PDvsCOLDTEMP, sesPDvsCOLDTEMP, PDvspopdens, sesPDvspopdens, ncol=2, nrow=2)
 
 
+###################### Random Forest model - Extent World ############
+library(raster)
+Worldclim <- raster::getData('worldclim', var='bio', res=5)
+
+#Per il rf non serve che le elevi al quadrato ma puoi usare quelle originali (questo tipo di modello tiene conto delle relazioni non lineari)
+install.packages("ranger")
+library(ranger)
+myRF=ranger(sesPD~bio1+bio4+bio12+bio15, importance = 'permutation', data=variables_correlation)
+#myRF=ranger(sesPD~pop_dens+bio1+bio2+bio3+bio4+bio5+bio6+bio7+bio8+bio9+bio10+bio11+bio12+bio13+bio14+bio15+bio16+bio17+bio18+bio19, importance = 'permutation', data=mydf5)
+
+print(myRF)
+importance(myRF) #la variabile con maggiore importance ha più peso nell'influenzare la tua variabile risposta cioè sesPD
+plot(myRF$predictions, variables_correlation$sesPD)
+#Random Forest model is capable of obtaining an explained variance of about 13%
+plot(myRF$predictions$bio1, variables_correlation$sesPD)
+
+#creating: Prediction using the RF model and Rasterstack containing only the variables used to make the model
+Worldclim <- raster::getData('worldclim', var='bio', res=5)
+new.stack = stack(Worldclim[[c("bio1", "bio4", "bio12", "bio15")]])
+
+myPredR = predict(new.stack, myRF, type = "response", predict.all=FALSE, na.rm = T, progress = "text", fun = function(model, ...) predict(model, ...)$predictions)
+myPredR
+hist(variables_correlation$sesPD, col="blue")
+hist(myPredR, add=TRUE)
+
+devtools::install_github("thomasp85/scico")
+install.packages("scico")
+library(scico)
+library(ggplot2)
+library(rasterVis)
+#scico_palette_show()
+
+gplot(myPredR, maxpixels=500000) +
+  geom_raster(aes(fill = value), interpolate = TRUE, color = "black") + 
+  labs(x="Longitude", y="Latitude", fill="")+
+  ggtitle("SesPD prediction based on 4 Bioclimatic Variables")+
+  theme_light()+
+#  scale_fill_scico(palette = 'roma', limits=c(-0.5, 0.5), na.value="transparent") +
+  scale_fill_viridis_c(limits=c(-0.5, 0.5), na.value="transparent") +
+  theme_bw() +
+  theme(legend.position = "bottom")+
+  guides(fill = guide_colourbar(title.position="top", title.hjust = 0.5, barwidth = 20, barheight = 0.8),
+         size = guide_legend(title.position="top", title.hjust = 0.5))+
+  coord_equal()
+
+
 ################# RANDOM FOREST MODEL ############## Extent Europe, resolution 2.5=about 4.5 km at the equator
 install.packages("ranger")
 library(ranger)
@@ -346,11 +392,27 @@ gplot(myPredR3, maxpixels=500000) +
          size = guide_legend(title.position="top", title.hjust = 0.5))+
   coord_equal()
 
-############################ VARIABLE IMPORTANCE BOX PLOT #########################
+############################ VARIABLE IMPORTANCE BOX PLOT 1 - Extent Eurpe #########################
+df<-data.frame(as.matrix(myRF3$variable.importance)) 
+df$variable<-rownames(df)
+colnames(df)[1]<-'importance'
 ggplot(df, aes(x=reorder(variable,importance), y=importance,fill=importance))+ 
   geom_bar(stat="identity", position="dodge")+ coord_flip()+
   ylab("Variable Importance")+
   xlab("")+
   ggtitle("Information Value Summary")+
-  guides(fill=F)+
-  scale_fill_gradient(low="red", high="blue")
+  scale_fill_gradient(low="red", high="blue")+
+  theme_light()+theme(legend.position = 'none')
+
+###################### variable importance - Extent World (bio1, 4, 12, 15) ############
+df2<-data.frame(as.matrix(myRF$variable.importance)) 
+df2$variable<-rownames(df2)
+colnames(df2)[1]<-'importance'
+ggplot(df2, aes(x=reorder(variable,importance), y=importance,fill=importance))+ 
+  geom_bar(stat="identity", position="dodge")+ coord_flip()+
+  ylab("Variable Importance")+
+  xlab("")+
+  ggtitle("Information Value Summary")+
+  scale_fill_gradient(low="red", high="blue")+
+  theme_light()+theme(legend.position = 'none')
+                   
