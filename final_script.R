@@ -374,12 +374,13 @@ gplot(myPredR3, maxpixels=500000) +
          size = guide_legend(title.position="top", title.hjust = 0.5))+
   coord_equal()
 
-################### 4 (SCALE FILL SCICO)
+################### 4 (SCALE FILL SCICO o VIRIDIS)
 devtools::install_github("thomasp85/scico")
 install.packages("scico")
 library(scico)
 library(ggplot2)
 library(rasterVis)
+library(viridis)
 #scico_palette_show()
 
 gplot(myPredR3, maxpixels=500000) +
@@ -387,6 +388,7 @@ gplot(myPredR3, maxpixels=500000) +
   labs(x="Longitude", y="Latitude", fill="")+
   theme_light()+
   scale_fill_scico(palette = 'roma', limits=c(-0.5, 0.5), na.value="transparent") +
+#  scale_fill_viridis_c(limits=c(-0.5, 0.5), na.value="transparent") +
   theme(legend.position = "bottom")+
   guides(fill = guide_colourbar(title.position="top", title.hjust = 0.5, barwidth = 20, barheight = 0.8),
          size = guide_legend(title.position="top", title.hjust = 0.5))+
