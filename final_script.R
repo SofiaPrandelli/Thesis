@@ -170,117 +170,90 @@ mydf5_complete <- na.omit(mydf5)
 table(mydf5_complete$sesPD>="0.00") #TRUE 193, FALSE 1364
 
 
-###################### scatterplots - PD e sesPD in fn di variabili ##################
+################## ggplot2::facet_wrap() SCATTERPLOT sesPD vs ALL VARIABLES #########
+library(readxl)
 library(ggplot2)
+names(mydf5_complete)
 
-############ world map based on 4 bioclim var ################
-############ BIO4 = temperature seasonality ############# sesPD vs BIO4 - higher variable importance value
-sespdtemp <- ggplot(mydf4, aes(x=bio4, y=pd.obs.z)) +
-       xlab("T° seasonality")+
-       ylab("sesPD")+
-#       ggtitle("SesPD vs Temperature seasonality")+
-  geom_point(size=1, color="darkblue")
-# PD
-pdtemp <- ggplot(mydf4, aes(x=bio4, y=PD))+
-  xlab("T° seasonality")+
-  ylab("PD")+
-#  ggtitle("PD vs Temperature seasonality")+
-  geom_point(size=1, color="darkblue")
+mydf5_long=mydf5_complete %>%
+  select("id", "pop_dens", "bio1","bio2",
+         "bio3", "bio4", "bio5", "bio6", "bio7",
+         "bio8", "bio9", "bio10", "bio11", "bio12",
+         "bio13", "bio14", "bio15", "bio16", "bio17", "bio18",
+         "bio19","sesPD", "SR") %>%
+  rename(myID="id") %>%
+  pivot_longer(-c(myID, sesPD, SR)) %>%
+  mutate(name=factor(name, levels = c("pop_dens", "bio1","bio2",
+                                      "bio3", "bio4", "bio5", "bio6", "bio7",
+                                      "bio8", "bio9", "bio10", "bio11", "bio12",
+                                      "bio13", "bio14", "bio15", "bio16", "bio17", "bio18",
+                                      "bio19")))
+sf3 <- mydf5_long %>%
+  ggplot(aes(x=value, y=sesPD))+
+#  geom_line()+
+  geom_point(size = 0.8)+
+  labs(title = "Standardized effect size of Phylogenetic Diversity variations",
+       x="Environmental variables", y="sesPD")+
+  facet_wrap(~name, scales = "free")+
+  theme_light() -> pd2;pd2
+tiff('/Users/sofiaprandelli/tesi/PLOTS/sesPD_BIOVAR',res=300,units='cm',width = 30,height = 25)
+pd2
+dev.off()
 
-############ BIO15 = Precipitation Seasonality ############# sesPD vs BIO15 - lower variable importance value
-sespdprec <- ggplot(mydf4, aes(x=bio15, y=pd.obs.z)) +
-  xlab("Precipitation Seasonality")+
-  ylab("sesPD")+
-#  ggtitle("SesPD vs Precipitation Seasonality")+
-  geom_point(size=1, color="darkblue")
-# PD
-pdprec <- ggplot(mydf4, aes(x=bio15, y=PD))+
-  xlab("Precipitation seasonality")+
-  ylab("PD")+
-#  ggtitle("PD vs Precipitation seasonality")+
-  geom_point(size=1, color="darkblue")
+sf3 + theme(plot.title = element_text(size = 20), axis.title.x = element_text(size = 16), axis.title.y = element_text(size = 16)) 
 
-require(gridExtra)
-grid.arrange(pdtemp, sespdtemp, pdprec, sespdprec, ncol=2, nrow=2)
 
-############## Europe map based on 19 bioclim var + pop denisty ################
-############## BIO11 = Mean Temperature of Coldest Quarter ############# sesPD vs BIO11 - higher variable importance value
-sesPDvsCOLDTEMP <- ggplot(mydf5_complete, aes(x=bio11, y=sesPD)) +
-  xlab("Mean T° of Coldest Quarter")+
-  ylab("sesPD")+
-#  ggtitle("SesPD vs Mean Temperature of Coldest Quarter")+
-  geom_point(size=1, color="darkblue")
-# PD
-PDvsCOLDTEMP <- ggplot(mydf5_complete, aes(x=bio11, y=PD))+
-  xlab("Mean T° of Coldest Quarter")+
-  ylab("PD")+
-#  ggtitle("PD vs Mean Temperature of Coldest Quarter")+
-  geom_point(size=1, color="darkblue")
-
-############ Population density ############# sesPD vs pop_dens -  lower variable importance value
-sesPDvspopdens <- ggplot(mydf5_complete, aes(x=pop_dens, y=sesPD)) +
-  xlab("Population density")+
-  ylab("sesPD")+
-#  ggtitle("SesPD vs Population density")+
-  geom_point(size=1, color="darkblue")
-# PD
-PDvspopdens <- ggplot(mydf5_complete, aes(x=pop_dens, y=PD))+
-  xlab("Population density")+
-  ylab("PD")+
-#  ggtitle("PPD vs Population density")+
-  geom_point(size=1, color="darkblue")
-
-grid.arrange(PDvsCOLDTEMP, sesPDvsCOLDTEMP, PDvspopdens, sesPDvspopdens, ncol=2, nrow=2)
-
+############################ VARIABLE IMPORTANCE BOX PLOT #########################
+df<-data.frame(as.matrix(myRF3$variable.importance)) 
+df$variable<-rownames(df)
+colnames(df)[1]<-'importance'
+ggplot(df, aes(x=reorder(variable,importance), y=importance,fill=importance))+ 
+  geom_bar(stat="identity", position="dodge")+ coord_flip()+
+  ylab("Variable Importance")+
+  xlab("")+
+  ggtitle("Information Value Summary")+
+  scale_fill_gradient(low="red", high="blue")+
+  theme_light()+theme(legend.position = 'none')
 
 ###################### Random Forest model - Extent World ############
 library(raster)
 Worldclim <- raster::getData('worldclim', var='bio', res=5)
 
-#Per il rf non serve che le elevi al quadrato ma puoi usare quelle originali (questo tipo di modello tiene conto delle relazioni non lineari)
-install.packages("ranger")
-library(ranger)
-myRF=ranger(sesPD~bio1+bio4+bio12+bio15, importance = 'permutation', data=variables_correlation)
-#myRF=ranger(sesPD~pop_dens+bio1+bio2+bio3+bio4+bio5+bio6+bio7+bio8+bio9+bio10+bio11+bio12+bio13+bio14+bio15+bio16+bio17+bio18+bio19, importance = 'permutation', data=mydf5)
+pop_dens = raster("/Users/sofiaprandelli/tesi/POP_DENS_2020_1km_Aggregated.tif")
+rr=aggregate(pop_dens, fact=9, fun=mean, expand=TRUE)
+rr=resample(rr, Worldclim, method ="bilinear")
 
-print(myRF)
-importance(myRF) #la variabile con maggiore importance ha più peso nell'influenzare la tua variabile risposta cioè sesPD
-plot(myRF$predictions, variables_correlation$sesPD)
-#Random Forest model is capable of obtaining an explained variance of about 13%
-plot(myRF$predictions$bio1, variables_correlation$sesPD)
+myRF3=ranger(sesPD~bio1+bio2+bio3+bio4+bio5+bio6+bio7+bio8+bio9+bio10+bio11+bio12+bio13+bio14+bio15+bio16+bio17+bio18+bio19+pop_dens, importance = 'permutation', data=mydf5_complete)
+new.stack = stack(Worldclim[[c("bio1","bio2","bio3","bio4","bio5","bio6","bio7","bio8","bio9","bio10","bio11","bio12","bio13","bio14","bio15","bio16","bio17","bio18","bio19")]], rr)
+names(new.stack)[20] <- "pop_dens"
 
-#creating: Prediction using the RF model and Rasterstack containing only the variables used to make the model
-Worldclim <- raster::getData('worldclim', var='bio', res=5)
-new.stack = stack(Worldclim[[c("bio1", "bio4", "bio12", "bio15")]])
-
-myPredR = predict(new.stack, myRF, type = "response", predict.all=FALSE, na.rm = T, progress = "text", fun = function(model, ...) predict(model, ...)$predictions)
-myPredR
-hist(variables_correlation$sesPD, col="blue")
-hist(myPredR, add=TRUE)
+require(utils)
+myPredR = predict(new.stack, myRF3, type = "response", predict.all=FALSE, na.rm = T, progress = "text", fun = function(model, ...) predict(model, ...)$predictions)
 
 devtools::install_github("thomasp85/scico")
 install.packages("scico")
 library(scico)
 library(ggplot2)
 library(rasterVis)
-#scico_palette_show()
 
-gplot(myPredR, maxpixels=500000) +
+pred_world <- gplot(myPredR, maxpixels=500000) +
   geom_raster(aes(fill = value), interpolate = TRUE, color = "black") + 
-  labs(x="Longitude", y="Latitude", fill="")+
-  ggtitle("SesPD prediction based on 4 Bioclimatic Variables")+
-  theme_light()+
-#  scale_fill_scico(palette = 'roma', limits=c(-0.5, 0.5), na.value="transparent") +
+  labs(x="Longitude", y="Latitude", fill="") +
+  ggtitle("SesPD prediction - World extent") +
+  theme(axis.text=element_text(size=14),
+        axis.title=element_text(size=14)) + 
+  theme(legend.text=element_text(size=12)) +
+  theme_light() +
   scale_fill_viridis_c(limits=c(-0.5, 0.5), na.value="transparent") +
   theme_bw() +
-  theme(legend.position = "bottom")+
-  guides(fill = guide_colourbar(title.position="top", title.hjust = 0.5, barwidth = 20, barheight = 0.8),
-         size = guide_legend(title.position="top", title.hjust = 0.5))+
+  theme(legend.position = "bottom") +
+  guides(fill = guide_colourbar(title.position="top", title.hjust = 0.5, barwidth = 12, barheight = 0.5, size=10),
+         size = guide_legend(title.position="top", title.hjust = 0.5)) +
   coord_equal()
 
+plot(pred_world)
 
 ################# RANDOM FOREST MODEL ############## Extent Europe, resolution 2.5=about 4.5 km at the equator
-install.packages("ranger")
 library(ranger)
 
 myRF3=ranger(sesPD~bio1+bio2+bio3+bio4+bio5+bio6+bio7+bio8+bio9+bio10+bio11+bio12+bio13+bio14+bio15+bio16+bio17+bio18+bio19+pop_dens, importance = 'permutation', data=mydf5_complete)
@@ -383,38 +356,21 @@ library(rasterVis)
 library(viridis)
 #scico_palette_show()
 
-gplot(myPredR3, maxpixels=500000) +
+scico_pred_europe <- gplot(myPredR3, maxpixels=500000) +
   geom_raster(aes(fill = value), interpolate = TRUE, color = "black") + 
-  labs(x="Longitude", y="Latitude", fill="")+
+  labs(x="Longitude", y="Latitude", fill="", title="sesPD prediction - European extent")+
+  ggtitle("SesPD prediction - European extent")+
+  theme(axis.text=element_text(size=14),
+        axis.title=element_text(size=14)) + 
+  theme(legend.text=element_text(size=12)) +
   theme_light()+
-  scale_fill_scico(palette = 'roma', limits=c(-0.5, 0.5), na.value="transparent") +
-#  scale_fill_viridis_c(limits=c(-0.5, 0.5), na.value="transparent") +
+#  scale_fill_scico(palette = 'roma', limits=c(-0.5, 0.5), na.value="transparent") +
+  scale_fill_viridis_c(limits=c(-0.5, 0.5), na.value="transparent") +
+  theme_bw() +
   theme(legend.position = "bottom")+
-  guides(fill = guide_colourbar(title.position="top", title.hjust = 0.5, barwidth = 20, barheight = 0.8),
+  guides(fill = guide_colourbar(title.position="top", title.hjust = 0.5, barwidth = 12, barheight = 0.5, size=10),
          size = guide_legend(title.position="top", title.hjust = 0.5))+
   coord_equal()
 
-############################ VARIABLE IMPORTANCE BOX PLOT 1 - Extent Eurpe #########################
-df<-data.frame(as.matrix(myRF3$variable.importance)) 
-df$variable<-rownames(df)
-colnames(df)[1]<-'importance'
-ggplot(df, aes(x=reorder(variable,importance), y=importance,fill=importance))+ 
-  geom_bar(stat="identity", position="dodge")+ coord_flip()+
-  ylab("Variable Importance")+
-  xlab("")+
-  ggtitle("Information Value Summary")+
-  scale_fill_gradient(low="red", high="blue")+
-  theme_light()+theme(legend.position = 'none')
-
-###################### variable importance - Extent World (bio1, 4, 12, 15) ############
-df2<-data.frame(as.matrix(myRF$variable.importance)) 
-df2$variable<-rownames(df2)
-colnames(df2)[1]<-'importance'
-ggplot(df2, aes(x=reorder(variable,importance), y=importance,fill=importance))+ 
-  geom_bar(stat="identity", position="dodge")+ coord_flip()+
-  ylab("Variable Importance")+
-  xlab("")+
-  ggtitle("Information Value Summary")+
-  scale_fill_gradient(low="red", high="blue")+
-  theme_light()+theme(legend.position = 'none')
+grid.arrange(pred_world, scico_pred_europe, ncol=1, nrow=2)
                    
