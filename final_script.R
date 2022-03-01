@@ -6,10 +6,9 @@
 load("/Users/sofiaprandelli/tesi/sPlotOpen.RData")
 
 #check species --> grep o stringsplit o tidyverse: 
-#devo essere sicura che le osservazioni siano definite tutte a livello di specie --> tolgo quelle che arrivano a livello di genere
 DT2.oa$Species <- gsub(DT2.oa$Species,pattern = ' ',replacement = '_')
 species_level <- DT2.oa[grepl("_", DT2.oa$Species),]
-NOspecies_level <- DT2.oa[!grepl("_", DT2.oa$Species),] #tutte le osservazioni che non possono essere considerate
+NOspecies_level <- DT2.oa[!grepl("_", DT2.oa$Species),] #osservazioni che non possono essere considerate
 View(table(NOspecies_level$Species))
 
 #d$d.Species <- gsub(d$d.Species,pattern = ' ',replacement = '_')
@@ -56,8 +55,8 @@ m2=m2[,-1] #tolgo l'oggetto "grids" da m2
 ##################### PRESENCE-ABSENCE MATRIX SPP1PA_2 ##################
 coordinates(d)= ~d.Longitude+d.Latitude #trasforma oggetto in spatial dataframe df 
 crs(d)=crs(m1)      #set the Coordinate reference system --> coordinate in WGS84
-ov2 <- over(d[,2], m2) #intersect griglia-occorrenze, double-check che la colonna selezionata sia la specie --> la specie va ad intersecare la griglia
-y1_2 <- cbind(as.data.frame(d[,c(1, 2, 3, 4, 5, 6)]), ov2) #add species names, genus, family, countryCode(double-check num colonna nel tuo db) 
+ov2 <- over(d[,2], m2) #intersect griglia-occorrenze, double-check che colonna selezionata sia la specie
+y1_2 <- cbind(as.data.frame(d[,c(1, 2, 3, 4, 5, 6)]), ov2) #add species names, genus, family, countryCode 
 #add d.PlantObservationID, d.Species, d.Original_Abundance, d.Abundance_Scale, d.Continent, d.Country ??
 y1_2 <- y1_2[complete.cases(y1_2), ] #adding grids value
 spp1_2 <- data.frame(as.matrix(long2sparse(y1_2, grids = "id", species = "d.Species")))[,-1] #spp1 matrice di abbondanza delle specie
@@ -74,7 +73,7 @@ nomiTab=c("Taxon","Genus","Hybrid.marker","Species","Abbrev", "Infraspecific.ran
           "New.Taxonomic.status", "Typo", "WFormat", "Higher.level","Date")
 
 namesSpPa2 <- gsub(colnames(spp1pa_2),pattern = '_',replacement = ' ')
-nrowSpPa2 <- length(namesSpPa2) #nrowTraits dà la lunghezza del database che deve creare che deve essere lungo quanto il n°specie che ho
+nrowSpPa2 <- length(namesSpPa2)
 standNamesSpPa2 <- as.data.frame(matrix(NA, nrow = nrowSpPa2, ncol=25,
                                         dimnames=list(namesSpPa2, nomiTab)))
 
@@ -102,7 +101,7 @@ taxoPlants2$Species <- gsub(taxoPlants2$Species,pattern = '-',replacement = '_')
 ################## Creation of the PHYLOGENETIC TREE ##############
 devtools::install_github("jinyizju/V.PhyloMaker", force=TRUE)
 library(V.PhyloMaker)
-phylogenyPlants2 <- phylo.maker(taxoPlants2, scenarios=c("S1","S3"))  #taxoPlants tassonomia di riferimento  
+phylogenyPlants2 <- phylo.maker(taxoPlants2, scenarios=c("S1","S3")) #taxoPlants tassonomia di riferimento  
 myTree2 <- phylogenyPlants2$scenario.3
 
 ##################### PD CALCULATION #######################
@@ -140,7 +139,7 @@ r=resample(r, Worldclim2, method ="bilinear")
 
 ################## all the climatic variables + pop density + sesPD, PD ##################
 
-tmp2 = raster::extract(r, m2, fun=mean, df=TRUE) #estrai la media di tutti i valori delle 19 variabili per le rispettive celle della griglia m2
+tmp2 = raster::extract(r, m2, fun=mean, df=TRUE) #estrai la media di tutti i valori delle 19 variabili per le celle della griglia m2
 tmp3 = raster::extract(Worldclim2, m2, fun=mean, df=TRUE)
 
 #tmp$bio1 = tmp$bio1 / 10 #i valori di bio1 su Worldclim sono moltiplicati per 10
@@ -148,7 +147,7 @@ colnames(tmp2)[1] <- "id"
 colnames(tmp2)[2] <- "pop_dens"
 colnames(tmp3)[1] <- "id"
 
-#merge tmp2 e oggetto spaziale m2 (tmp2 e m2 hanno lo stesso numero di celle e lo stesso ordine)
+#merge tmp2 e oggetto spaziale m2
 mydf5 <- sp::merge(tmp2, tmp3, by='id', all=F)
 mydf5=cbind(m2, mydf5)
 mydf5 <- mydf5@data
