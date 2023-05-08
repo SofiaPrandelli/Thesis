@@ -1,11 +1,9 @@
 ###### Biogeographical patterns of plant phylogenetic diversity at the European scale ######
 
-
-
-#Caricamento dati
+# Data loading
 load("/Users/sofiaprandelli/tesi/sPlotOpen.RData")
 
-#check species --> grep o stringsplit o tidyverse: 
+#check species --> grep / stringsplit / tidyverse
 DT2.oa$Species <- gsub(DT2.oa$Species,pattern = ' ',replacement = '_')
 species_level <- DT2.oa[grepl("_", DT2.oa$Species),]
 NOspecies_level <- DT2.oa[!grepl("_", DT2.oa$Species),] #osservazioni che non possono essere considerate
@@ -20,17 +18,15 @@ d <- data.frame(d$PlotObservationID, d$Species, d$Original_abundance, d$Abundanc
 #Filtriamo per il continente Europa e teniamo solo le specie con le abbondanze x_IC (n° individui per plot) e pa
 d <- d[d$d.Continent=='Europe',]
 d <- d[d$d.Abundance_scale != 'x_SC',]
-
 names(d)
 unique(d$d.Original_abundance)
 
-# setting wd
-setwd("/Users/sofiaprandelli/tesi")
-require(bigreadr)
-require(tidyverse)
-require(CoordinateCleaner)
-require(gridExtra)
-require(countrycode)
+# set wd
+library(bigreadr)
+library(tidyverse)
+library(CoordinateCleaner)
+library(gridExtra)
+library(countrycode)
 library(data.table)
 library(sf)
 library(rnaturalearth)
@@ -40,8 +36,10 @@ library(rasterVis)
 library(viridis)
 library(RColorBrewer)
 library(phyloregion)
+library(ggplot2)
+library(viridis)
 
-##################### CREATION OF GRID 0.5 RESOLUTION ##################
+#### CREATION OF GRID 0.5 RESOLUTION ####
 # cambio la risoluzione della maglia da 100 km a 50 km 
 world <- ne_countries(scale = "medium", returnclass = "sf")
 r<-raster::extent(c(xmin=-30, xmax=54, ymin=25, ymax=74)) #extent tagliato sull'Europa
@@ -52,7 +50,7 @@ crs(m2) <- crs(world) #set the Coordinate reference system
 m2$id=1:nrow(m2)
 m2=m2[,-1] #tolgo l'oggetto "grids" da m2
 
-##################### PRESENCE-ABSENCE MATRIX SPP1PA_2 ##################
+#### PRESENCE-ABSENCE MATRIX SPP1PA_2 ####
 coordinates(d)= ~d.Longitude+d.Latitude #trasforma oggetto in spatial dataframe df 
 crs(d)=crs(m1)      #set the Coordinate reference system --> coordinate in WGS84
 ov2 <- over(d[,2], m2) #intersect griglia-occorrenze, double-check che colonna selezionata sia la specie
@@ -65,7 +63,7 @@ rm(spp1_2)
 rm(y1_2)
 rm(ov2)
 
-#################### STANDARDIZATION of plant names using TPL ###########
+#### STANDARDIZATION of plant names using TPL ####
 nomiTab=c("Taxon","Genus","Hybrid.marker","Species","Abbrev", "Infraspecific.rank",
           "Infraspecific","Authority", "ID", "Plant.Name.Index", "TPL.version",
           "Taxonomic.status","Family","New.Genus","New.Hybrid.marker","New.Species",
@@ -76,10 +74,9 @@ namesSpPa2 <- gsub(colnames(spp1pa_2),pattern = '_',replacement = ' ')
 nrowSpPa2 <- length(namesSpPa2)
 standNamesSpPa2 <- as.data.frame(matrix(NA, nrow = nrowSpPa2, ncol=25,
                                         dimnames=list(namesSpPa2, nomiTab)))
-
 batchSize=700
 
-install.packages("Taxonstand") #requires Taxonstand (for the TPL function)
+#install.packages("Taxonstand") #requires Taxonstand (for the TPL function)
 library(Taxonstand)
 
 for(i in 1:(ceiling(nrowSpPa2/batchSize))){
@@ -98,20 +95,20 @@ taxoPlants2<-data.frame("Species"=paste(standNamesSpPa2$New.Genus,standNamesSpPa
 taxoPlants2$Species <- gsub(taxoPlants2$Species,pattern = ' ',replacement = '_')
 taxoPlants2$Species <- gsub(taxoPlants2$Species,pattern = '-',replacement = '_')
 
-################## Creation of the PHYLOGENETIC TREE ##############
+#### Creation of the PHYLOGENETIC TREE ####
 devtools::install_github("jinyizju/V.PhyloMaker", force=TRUE)
 library(V.PhyloMaker)
 phylogenyPlants2 <- phylo.maker(taxoPlants2, scenarios=c("S1","S3")) #taxoPlants tassonomia di riferimento  
 myTree2 <- phylogenyPlants2$scenario.3
 
-##################### PD CALCULATION #######################
+##### PD CALCULATION #####
 install.packages("picante")
 library(picante)
 dim(spp1pa_2)[2]==length(myTree2$tip.label) #check che spp nella matrice di comunità siano le stesse che nell'albero
 PDobs_2 <- pd(spp1pa_2, myTree2, include.root=TRUE)
 write.csv(PDobs_2, '/Users/sofiaprandelli/tesi/PDobs_2.csv')
 
-###################### sesPD ###############################
+#### sesPD ####
 #randomizing my community or spps in the tree to obtain a Standardized effect size (SES)
 #ottenendo il valore "effettivo" di pd a prescindere dalle spp che ci sono in quella cella
 require(picante)
@@ -120,7 +117,7 @@ sesPD_2 = picante::ses.pd(samp=spp1pa_2, tree=myTree2, null.model ="independents
 #salvare sesPD come rds o come tabella cvs, basta che possa essere importato in R come data.frame
 write.csv(sesPD_2, '/Users/sofiaprandelli/tesi/sesPD_2.csv')
 
-################# WORLDCLIM DOWNLOAD ####################
+#### WORLDCLIM DOWNLOAD ####
 setwd("/Users/sofiaprandelli/tesi")
 library(raster)
 Worldclim2 <- raster::getData('worldclim', var='bio', res=2.5) #risoluzione più fine, a 2.5 arc-minuti
@@ -137,8 +134,7 @@ pop_dens = raster("/Users/sofiaprandelli/tesi/POP_DENS_2020_1km_Aggregated.tif")
 r=aggregate(pop_dens, fact=4, fun=mean, expand=TRUE)
 r=resample(r, Worldclim2, method ="bilinear")
 
-################## all the climatic variables + pop density + sesPD, PD ##################
-
+#### all the climatic variables + pop density + sesPD, PD ####
 tmp2 = raster::extract(r, m2, fun=mean, df=TRUE) #estrai la media di tutti i valori delle 19 variabili per le celle della griglia m2
 tmp3 = raster::extract(Worldclim2, m2, fun=mean, df=TRUE)
 
@@ -168,8 +164,7 @@ write.csv(mydf5, '/Users/sofiaprandelli/tesi/mydf5+pop_dens.csv')
 mydf5_complete <- na.omit(mydf5)
 table(mydf5_complete$sesPD>="0.00") #TRUE 193, FALSE 1364
 
-
-################## ggplot2::facet_wrap() SCATTERPLOT sesPD vs ALL VARIABLES #########
+#### ggplot2::facet_wrap() SCATTERPLOT sesPD vs ALL VARIABLES ####
 library(readxl)
 library(ggplot2)
 names(mydf5_complete)
@@ -201,8 +196,7 @@ dev.off()
 
 sf3 + theme(plot.title = element_text(size = 20), axis.title.x = element_text(size = 16), axis.title.y = element_text(size = 16)) 
 
-
-############################ VARIABLE IMPORTANCE BOX PLOT #########################
+#### VARIABLE IMPORTANCE BOX PLOT ####
 df<-data.frame(as.matrix(myRF3$variable.importance)) 
 df$variable<-rownames(df)
 colnames(df)[1]<-'importance'
@@ -214,7 +208,7 @@ ggplot(df, aes(x=reorder(variable,importance), y=importance,fill=importance))+
   scale_fill_gradient(low="red", high="blue")+
   theme_light()+theme(legend.position = 'none')
 
-###################### Random Forest model - Extent World ############
+#### Random Forest model - Extent World ####
 library(raster)
 Worldclim <- raster::getData('worldclim', var='bio', res=5)
 
@@ -252,14 +246,14 @@ pred_world <- gplot(myPredR, maxpixels=500000) +
 
 plot(pred_world)
 
-################# RANDOM FOREST MODEL ############## Extent Europe, resolution 2.5=about 4.5 km at the equator
+#### RANDOM FOREST MODEL #### Extent Europe, resolution 2.5=about 4.5 km at the equator
 library(ranger)
 
 myRF3=ranger(sesPD~bio1+bio2+bio3+bio4+bio5+bio6+bio7+bio8+bio9+bio10+bio11+bio12+bio13+bio14+bio15+bio16+bio17+bio18+bio19+pop_dens, importance = 'permutation', data=mydf5_complete)
 print(myRF3)
 importance(myRF3)
 
-########################################## Prediction - bisector and intercept
+#### Prediction - bisector and intercept
 data4plot=cbind.data.frame("pred"=myRF3$predictions, "obs"=mydf5_complete$sesPD)
 summary(lm(data4plot$obs~data4plot$pred))
 predlm <- (lm(data4plot$obs~data4plot$pred))
@@ -284,7 +278,7 @@ ggplot(data=data4plot, aes(x=pred, y=obs) ) +
   theme_bw()
 sesPD_prediction_3 + geom_abline(slope = 1)
 
-################################## Prediction - hex bins geom
+#### Prediction - hex bins geom
 ggplot(data=data4plot, aes(x=pred, y=obs) ) +
   geom_hex(bins = 70) +
   ylab("sesPD") +
@@ -296,7 +290,7 @@ ggplot(data=data4plot, aes(x=pred, y=obs) ) +
   scale_fill_continuous(type = "viridis") +
   theme_bw()
 
-################## PREDICTION ####################
+#### PREDICTION ####
 new.stack3 = stack(Worldclim2[[c("bio1","bio2","bio3","bio4","bio5","bio6","bio7","bio8","bio9","bio10","bio11","bio12","bio13","bio14","bio15","bio16","bio17","bio18","bio19")]], r)
 names(new.stack3)[20] <- "pop_dens"
 
@@ -308,13 +302,8 @@ require(utils)
 myPredR3 = predict(new.stack3, myRF3, type = "response", predict.all=FALSE, na.rm = T, progress = "text", fun = function(model, ...) predict(model, ...)$predictions)
 myPredR3
 
-################### RASTER FINALI #################### 
-library(raster)
-library(ggplot2)
-library(rasterVis)
-library(viridis)
-
-#################### 1 (prova)
+#### FINAL RASTER ####
+# 1 (prova)
 gplot(myPredR3, maxpixels=500000) +
   geom_raster(aes(fill = value), interpolate = TRUE, color = "black") + 
   labs(x="Longitude",y="Latitude", fill="")+
@@ -324,7 +313,7 @@ gplot(myPredR3, maxpixels=500000) +
          size = guide_legend(title.position="top", title.hjust = 0.5))+
   coord_equal()
 
-#################### 2 (prova)
+#### 2 (prova)
 gplot(myPredR3, maxpixels=500000) +
   geom_raster(aes(fill = value), interpolate = TRUE, color = "black") + 
   labs(x="Longitude", y="Latitude", fill="")+
@@ -335,7 +324,7 @@ gplot(myPredR3, maxpixels=500000) +
          size = guide_legend(title.position="top", title.hjust = 0.5))+
   coord_equal()
 
-#################### 3 (prova)
+#### 3 (prova)
 gplot(myPredR3, maxpixels=500000) +
   geom_raster(aes(fill = value), interpolate = TRUE, color = "black") + 
   labs(x="Longitude", y="Latitude", fill="")+
@@ -346,7 +335,7 @@ gplot(myPredR3, maxpixels=500000) +
          size = guide_legend(title.position="top", title.hjust = 0.5))+
   coord_equal()
 
-################### 4 (SCALE FILL SCICO o VIRIDIS)
+#### 4 (SCALE FILL SCICO or VIRIDIS)
 devtools::install_github("thomasp85/scico")
 install.packages("scico")
 library(scico)
